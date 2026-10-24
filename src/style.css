@@ -809,6 +809,13 @@ td small.amber {
 .settings-actions {
   padding: 0 24px 10px;
 }
+.reset-actions {
+  padding-bottom: 24px;
+}
+.settings-actions.reset-actions p {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
 .settings-actions p {
   color: #8791a5;
   font-size: 12px;

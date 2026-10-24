@@ -2090,18 +2090,20 @@ function SettingsPage({
         </Section>
         <div className="stack">
           <Section title="Daten zurücksetzen">
-            <p>
-              Entfernt alle Daten und setzt die Einstellungen zurück. Vorher
-              wird eine Sicherung erstellt.
-            </p>
-            <Button
-              color="error"
-              variant="outlined"
-              disabled={busy || saving || dirty}
-              onClick={onReset}
-            >
-              Alle Daten zurücksetzen
-            </Button>
+            <div className="settings-actions reset-actions">
+              <p>
+                Entfernt alle Daten und setzt die Einstellungen zurück. Vorher
+                wird eine Sicherung erstellt.
+              </p>
+              <Button
+                color="error"
+                variant="outlined"
+                disabled={busy || saving || dirty}
+                onClick={onReset}
+              >
+                Alle Daten zurücksetzen
+              </Button>
+            </div>
           </Section>
           <Section title="Daten austauschen">
             <div className="settings-actions">
