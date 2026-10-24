@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release/
+release*/
+*.sqlite*
+*.xlsx
+*.json.bak
+.env*
+backups/
+*.log
+test-output/
