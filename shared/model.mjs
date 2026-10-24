@@ -132,7 +132,8 @@ export function selectable(records, currentId = "") {
   );
 }
 export function deadlineDistance(date, status, now = today()) {
-  if (status === "Beendet" || !validDate(date)) return null;
+  if (["Beendet", "Archiviert"].includes(status) || !validDate(date))
+    return null;
   const days = daysBetween(date, now),
     count = Math.abs(days);
   return {
@@ -333,6 +334,7 @@ export const urgencyRank = {
   "Termin fehlt": 4,
   Geplant: 5,
   Beendet: 6,
+  Archiviert: 7,
 };
 export function tone(status) {
   return ["Überfällig", "Heute fällig"].includes(status)
@@ -351,7 +353,7 @@ export function tone(status) {
           : "neutral";
 }
 export function overview(c, settings, now = today()) {
-  const ended = c.status === "Beendet";
+  const ended = c.status === "Beendet" || !!c.archivedAt;
   const badInvoice =
     !!c.invoiceDate && (!validDate(c.invoiceDate) || c.invoiceDate > now);
   const invoiceDue = badInvoice
@@ -379,7 +381,9 @@ export function overview(c, settings, now = today()) {
   ].map((d) => ({
     ...d,
     status: ended
-      ? "Beendet"
+      ? c.archivedAt
+        ? "Archiviert"
+        : "Beendet"
       : d.key === "invoice" && badInvoice
         ? "Datum prüfen"
         : deadlineStatus(d.date, d.warning, now),
@@ -391,7 +395,9 @@ export function overview(c, settings, now = today()) {
         .filter(validDate)
         .sort()[0] || "";
   let status = ended
-    ? "Beendet"
+    ? c.archivedAt
+      ? "Archiviert"
+      : "Beendet"
     : deadlines
         .map((d) => d.status)
         .sort((a, b) => urgencyRank[a] - urgencyRank[b])[0];
@@ -423,7 +429,7 @@ export function overview(c, settings, now = today()) {
 }
 export function warnings(c, state) {
   const a = [];
-  if (c.status === "Beendet") return a;
+  if (c.status === "Beendet" || c.archivedAt) return a;
   if (!c.staffId) a.push("Begleitung fehlt");
   if (!c.schoolId) a.push("Schule fehlt");
   if (!c.municipalityId) a.push("Kommune fehlt");

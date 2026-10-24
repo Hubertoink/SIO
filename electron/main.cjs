@@ -47,6 +47,11 @@ async function autoBackup() {
     .sort();
   for (const f of files.slice(0, -20)) await fs.unlink(path.join(dir, f));
 }
+async function safetyBackup(prefix) {
+  const dir = path.join(dataDir, "backups");
+  await fs.mkdir(dir, { recursive: true });
+  return backupTo(path.join(dir, `${prefix}-${fileStamp()}.json`));
+}
 function handle(name, fn) {
   ipcMain.handle(name, async (event, ...args) => {
     if (
@@ -82,13 +87,6 @@ else {
       const { readWorkbook, writeWorkbook } = await import("./excel.mjs");
       await fs.mkdir(dataDir, { recursive: true });
       store = new Store(path.join(dataDir, "sco.sqlite"));
-      const seed = process.argv.find((a) => a.startsWith("--import-workbook="));
-      if (seed && !store.read().cases.length) {
-        const parsed = await readWorkbook(
-          seed.slice("--import-workbook=".length),
-        );
-        store.import(parsed.state, store.read().revision);
-      }
       if (store.read().cases.length) await autoBackup();
       session.defaultSession.setPermissionRequestHandler(
         (_wc, _permission, cb) => cb(false),
@@ -182,9 +180,22 @@ else {
       handle("archive", (kind, id, archived, revision) =>
         store.archive(kind, id, archived, revision),
       );
-      handle("demo", async (revision) => {
-        await autoBackup();
-        return store.demo(revision);
+      handle("delete-case", async (id, confirmation, revision) => {
+        if (!id || confirmation !== id)
+          throw Error("Bitte die Fall-ID bestätigen.");
+        const backupPath = await safetyBackup("Vor-Loeschung");
+        return {
+          state: store.removeCase(id, confirmation, revision),
+          backupPath,
+        };
+      });
+      handle("reset", async (confirmation, revision) => {
+        if (confirmation !== "RESET") throw Error("Bitte RESET bestätigen.");
+        const backupPath = await safetyBackup("Vor-Reset");
+        const state = store.reset(confirmation, revision);
+        pending = undefined;
+        dirtySources.clear();
+        return { state, backupPath };
       });
       handle("dirty", (source, value) => {
         if (typeof source !== "string")

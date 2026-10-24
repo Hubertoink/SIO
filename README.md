@@ -6,7 +6,7 @@ SIO bildet die Excel-Struktur mit **Fallliste, Fälle, Begleitungen und Auswertu
 
 [Windows-Download unter Releases](https://github.com/Hubertoink/SIO/releases/latest): Installer oder portable EXE herunterladen. Eine bereits laufende ältere Version vorher schließen. Weder Node.js noch Python oder Excel werden zum Benutzen benötigt. Die Windows-Binaries sind nicht signiert.
 
-Der Installer richtet SIO für den aktuellen Windows-Benutzer ein. Die portable EXE benötigt keine Installation; Daten werden trotzdem im Benutzerprofil gespeichert. Für lokal gebaute Versionen lässt sich `release-sio-0.2.0/win-unpacked/SIO.exe` direkt öffnen; dabei muss der gesamte Ordner zusammenbleiben.
+Der Installer richtet SIO für den aktuellen Windows-Benutzer ein. Die portable EXE benötigt keine Installation; Daten werden trotzdem im Benutzerprofil gespeichert. Für lokal gebaute Versionen lässt sich `release-sio-0.3.0/win-unpacked/SIO.exe` direkt öffnen; dabei muss der gesamte Ordner zusammenbleiben.
 
 ## Bedienung
 
@@ -45,11 +45,10 @@ Electron mit isoliertem, sandboxed Renderer; Zugriff auf SQLite, Import und Expo
 
 Die Tests prüfen Datumsgrenzen, Fristbündelung, beendete Fälle, Eingabeprüfung, Dubletten, dauerhafte Speicherung, Konflikte, Import-Atomarität, Excel-Rundlauf sowie Formular- und Navigationsabläufe. Ein Excel-Rundlauf bestätigt Daten und Formel-Caches; er ersetzt keine vollständige Prüfung aller Formeln in Microsoft Excel.
 
-## Tastatur und Demodaten
+## Tastatur
 
 Enter speichert Kommune oder Schule aus einem einzeiligen Textfeld. In Auswahllisten bestätigt Enter die Auswahl. Strg+Enter und Strg+S speichern das aktive Formular; Escape schließt es mit Rückfrage bei ungespeicherten Eingaben. Direkt im Schulformular kann eine neue Kommune angelegt werden, ohne den Schulnamen zu verlieren.
 
-Unter Einstellungen → Entwicklung ergänzt „Demodaten erstellen“ einmalig sechs fiktive Fälle einschließlich Personen, Träger, Fristen und Dokumentation. Vorhandene Daten und Fristeinstellungen bleiben erhalten.
 
 Ein bereits vorhandener Datenordner `%APPDATA%/SCO` aus dem ersten Testbuild wird weiterverwendet, damit bisher gespeicherte Einträge erhalten bleiben. Sicherungen aus dem ersten Build sind weiterhin importierbar.
 
@@ -71,3 +70,13 @@ Die drei Fristkarten sind ebenfalls direkt bearbeitbar. Bei Rechnungsstellung wi
 
 Die beiden Begleitungsaktionen stehen an getrennten Stellen: Zuordnung beim Namen der Begleitung, Bearbeitung der gemeinsamen Stammdaten beim Inhaltsbereich. Das Original-Logo liegt unter `assets/SIO_Logo.png`; `assets/SIO_Logo.ico` enthält mehrere Windows-Icon-Größen. Beide werden in die Anwendung eingebunden. Die Tests benötigen ausschließlich fiktive, im Test erzeugte Daten.
 
+
+## Fallarchiv, Löschen und Reset (0.3.0)
+
+In der Fallakte stehen Archivieren/Wieder aktivieren und Fall löschen bereit. Archivierte Fälle behalten ihren ursprünglichen Fallstatus, alle Daten und ihren Verlauf. Sie sind im Fallstatusfilter Archiv erreichbar und werden aus aktiven Fristen und Auslastungen ausgeblendet. Excel erhält den Archivstatus in der Spalte Archiviert am.
+
+Löschen erfordert die Fall-ID und entfernt den Fall samt Verlauf, jedoch keine gemeinsam verwendeten Stammdaten. Einstellungen → Alle Daten zurücksetzen verlangt RESET und leert den gesamten Datenbestand einschließlich Verlauf und eigener Fristeinstellungen.
+
+Vor beiden Aktionen entsteht eine JSON-Sicherung unter backups/Vor-Loeschung- bzw. Vor-Reset-. Ohne erfolgreiche Sicherung erfolgt keine Löschung. Diese Sicherungen werden nicht von der normalen 20-Dateien-Rotation entfernt. Sicherungen und bereits exportierte Dateien bleiben erhalten; der Reset ist keine sichere physische Datenvernichtung. Wiederherstellung erfolgt über Excel / Sicherung importieren.
+
+Die Anwendung enthält keinen Demo-Generator mehr und startet bei einer Neuinstallation leer. Testdaten liegen ausschließlich unter tests/ und werden nicht in die Anwendung gepackt. Bestehende Daten bleiben beim Update erhalten.

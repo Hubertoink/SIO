@@ -18,7 +18,8 @@ contextBridge.exposeInMainWorld(
     backup: invoke("backup"),
     openData: invoke("open-data"),
     dirty: invoke("dirty"),
-    demo: invoke("demo"),
+    deleteCase: invoke("delete-case"),
+    reset: invoke("reset"),
     archive: invoke("archive"),
     resolveClose: invoke("resolve-close"),
     onCloseRequested: (callback) => {

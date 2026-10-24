@@ -43,6 +43,8 @@ export function CaseDetail({
   state,
   onBack,
   onEdit,
+  onArchive,
+  onDelete,
   onSave,
   notify,
   ask,
@@ -287,7 +289,7 @@ export function CaseDetail({
           <h1>{c.name}</h1>
           <div className="detail-sub">
             <Badge
-              value={c.status}
+              value={c.archivedAt ? "Archiviert" : c.status}
               kind={c.status === "Laufend" ? "purple" : "neutral"}
             />
             <span>
@@ -296,15 +298,34 @@ export function CaseDetail({
             <span>{resolve(state, "municipalityId", c.municipalityId)}</span>
           </div>
         </div>
-        <Button
-          variant="contained"
-          startIcon={<Pencil size={16} />}
-          onClick={async () => {
-            if (await abandon()) onEdit();
-          }}
-        >
-          Fall bearbeiten
-        </Button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Button
+            disabled={saving}
+            onClick={async () => {
+              if (await abandon()) onArchive();
+            }}
+          >
+            {c.archivedAt ? "Wieder aktivieren" : "Archivieren"}
+          </Button>
+          <Button
+            color="error"
+            disabled={saving}
+            onClick={async () => {
+              if (await abandon()) onDelete();
+            }}
+          >
+            Fall löschen
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<Pencil size={16} />}
+            onClick={async () => {
+              if (await abandon()) onEdit();
+            }}
+          >
+            Fall bearbeiten
+          </Button>
+        </div>
       </div>
       <div className="deadline-cards">
         {c.ov.deadlines.map((d) => {

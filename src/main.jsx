@@ -165,6 +165,8 @@ export function App() {
     [editor, setEditor] = useState(null),
     [master, setMaster] = useState(null),
     [question, setQuestion] = useState(null),
+    [destruction, setDestruction] = useState(null),
+    [confirmation, setConfirmation] = useState(""),
     [importInfo, setImportInfo] = useState(null),
     [busy, setBusy] = useState(false),
     [now, setNow] = useState(today());
@@ -241,6 +243,28 @@ export function App() {
     notify("Gespeichert");
     return result;
   };
+  const openDestruction = (record = null) => {
+    setConfirmation("");
+    setDestruction({ record, revision: state.revision });
+  };
+  const destroy = () =>
+    run(async () => {
+      const result = destruction.record
+        ? await api(
+            "deleteCase",
+            destruction.record.id,
+            confirmation,
+            destruction.revision,
+          )
+        : await api("reset", confirmation, destruction.revision);
+      setState(result.state);
+      setDestruction(null);
+      setEditor(null);
+      setMaster(null);
+      setImportInfo(null);
+      go("cases");
+      notify(`Daten entfernt. Sicherung: ${result.backupPath}`);
+    });
   const archiveRecord = async (kind, record) => {
     const archived = !record.archivedAt;
     const linked = state.cases.filter(
@@ -250,7 +274,9 @@ export function App() {
       archived &&
       !(await ask(
         "Eintrag archivieren?",
-        `${record.name} wird für neue Zuordnungen ausgeblendet. ${linked ? `${linked} bestehende Zuordnungen bleiben erhalten.` : "Der Eintrag kann später wieder aktiviert werden."}`,
+        kind === "cases"
+          ? `${record.name} wird archiviert und aus aktiven Fristen ausgeblendet. Alle Daten bleiben erhalten; der Fall kann wieder aktiviert werden.`
+          : `${record.name} wird für neue Zuordnungen ausgeblendet. ${linked ? `${linked} bestehende Zuordnungen bleiben erhalten.` : "Der Eintrag kann später wieder aktiviert werden."}`,
         "Archivieren",
       ))
     )
@@ -294,7 +320,9 @@ export function App() {
       })) || [],
     [state, now],
   );
-  const active = computed.filter((c) => c.status !== "Beendet");
+  const active = computed.filter(
+    (c) => c.status !== "Beendet" && !c.archivedAt,
+  );
   const counts = {
     urgent: active.filter((c) =>
       ["Überfällig", "Heute fällig"].includes(c.ov.status),
@@ -343,8 +371,11 @@ export function App() {
     computed.filter(
       (c) =>
         (statusFilter === "Alle" ||
-          (statusFilter === "Aktive" && c.status !== "Beendet") ||
-          c.status === statusFilter) &&
+          (statusFilter === "Aktive" &&
+            c.status !== "Beendet" &&
+            !c.archivedAt) ||
+          (c.status === statusFilter && !c.archivedAt) ||
+          (statusFilter === "Archiv" && !!c.archivedAt)) &&
         (!municipalityFilter || c.municipalityId === municipalityFilter) &&
         (!caseQuery ||
           [
@@ -788,7 +819,7 @@ export function App() {
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
-                {["Aktive", "Alle", ...caseStatus].map((v) => (
+                {["Aktive", "Alle", "Archiv", ...caseStatus].map((v) => (
                   <MenuItem value={v} key={v}>
                     {v}
                   </MenuItem>
@@ -850,6 +881,8 @@ export function App() {
               key={detail.id}
               c={detail}
               state={state}
+              onArchive={() => archiveRecord("cases", detail)}
+              onDelete={() => openDestruction(detail)}
               onBack={() => go("cases")}
               onEdit={(e) => edit("cases", detail, e)}
               notify={notify}
@@ -894,6 +927,7 @@ export function App() {
             exportData={exportData}
             previewImport={previewImport}
             backup={backup}
+            onReset={() => openDestruction()}
             busy={busy}
           />
         )}
@@ -996,6 +1030,52 @@ export function App() {
             }
           >
             Änderungen verwerfen
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={!!destruction}
+        onClose={() => !busy && setDestruction(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {destruction?.record
+            ? "Fall dauerhaft löschen?"
+            : "SIO vollständig zurücksetzen?"}
+        </DialogTitle>
+        <DialogContent>
+          <p>
+            {destruction?.record
+              ? `Der Fall ${destruction.record.name} samt Verlauf wird entfernt. Schulen und Begleitungen bleiben erhalten.`
+              : "Alle Fälle, Begleitungen, Schulen, Kommunen und Verläufe werden entfernt. Die Einstellungen werden zurückgesetzt."}
+          </p>
+          <p>
+            Vorher wird automatisch eine Sicherung im Datenordner erstellt.
+            Vorhandene Sicherungen und exportierte Dateien bleiben erhalten.
+          </p>
+          <TextField
+            autoFocus
+            fullWidth
+            label={`Zur Bestätigung ${destruction?.record?.id || "RESET"} eingeben`}
+            value={confirmation}
+            onChange={(e) => setConfirmation(e.target.value)}
+            disabled={busy}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={busy} onClick={() => setDestruction(null)}>
+            Abbrechen
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={
+              busy || confirmation !== (destruction?.record?.id || "RESET")
+            }
+            onClick={destroy}
+          >
+            {destruction?.record ? "Endgültig löschen" : "Alles zurücksetzen"}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1536,7 +1616,8 @@ function StaffPage({ state, edit, go, onArchive }) {
       <div className="staff-grid">
         {filtered.map((s) => {
           const cases = state.cases.filter(
-            (c) => c.staffId === s.id && c.status !== "Beendet",
+            (c) =>
+              c.staffId === s.id && c.status !== "Beendet" && !c.archivedAt,
           );
           const used = cases.reduce((sum, c) => sum + Number(c.hours || 0), 0);
           return (
@@ -1931,6 +2012,7 @@ function SettingsPage({
   exportData,
   previewImport,
   backup,
+  onReset,
   busy,
 }) {
   const [draft, setDraft] = useState(state.settings),
@@ -1949,17 +2031,6 @@ function SettingsPage({
     try {
       setState(await api("settings", draft, state.revision));
       notify("Fristeinstellungen gespeichert");
-    } catch (e) {
-      notify(e.message, "error");
-    } finally {
-      setSaving(false);
-    }
-  };
-  const createDemo = async () => {
-    setSaving(true);
-    try {
-      setState(await api("demo", state.revision));
-      notify("6 Demofälle und passende Begleitungen wurden ergänzt.");
     } catch (e) {
       notify(e.message, "error");
     } finally {
@@ -2018,31 +2089,19 @@ function SettingsPage({
           </div>
         </Section>
         <div className="stack">
-          <Section title="Entwicklung">
-            <div className="settings-actions">
-              <Button
-                variant="outlined"
-                startIcon={<Database size={17} />}
-                disabled={
-                  busy ||
-                  saving ||
-                  dirty ||
-                  state.cases.some((c) => c.id.startsWith("DEMO-"))
-                }
-                onClick={createDemo}
-              >
-                {state.cases.some((c) => c.id.startsWith("DEMO-"))
-                  ? "Demodaten vorhanden"
-                  : "Demodaten erstellen"}
-              </Button>
-              <p>
-                Ergänzt sechs fiktive Fälle, Personen und einen Träger.
-                Vorhandene Einträge bleiben erhalten.
-              </p>
-              {dirty && (
-                <p>Bitte die geänderten Fristeinstellungen zuerst speichern.</p>
-              )}
-            </div>
+          <Section title="Daten zurücksetzen">
+            <p>
+              Entfernt alle Daten und setzt die Einstellungen zurück. Vorher
+              wird eine Sicherung erstellt.
+            </p>
+            <Button
+              color="error"
+              variant="outlined"
+              disabled={busy || saving || dirty}
+              onClick={onReset}
+            >
+              Alle Daten zurücksetzen
+            </Button>
           </Section>
           <Section title="Daten austauschen">
             <div className="settings-actions">

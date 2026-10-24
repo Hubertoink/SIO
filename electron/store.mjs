@@ -1,6 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { withDemoData } from "../shared/demo.mjs";
 import {
   emptyState,
   validateRecord,
@@ -40,7 +39,7 @@ export class Store {
       .all()
       .map((x) => ({ ...x, changes: JSON.parse(x.changes) }));
   }
-  commit(state, revision, entries = []) {
+  commit(state, revision, entries = [], deletedEntities = []) {
     this.db.exec("BEGIN IMMEDIATE");
     try {
       const result = this.db
@@ -52,6 +51,8 @@ export class Store {
         throw Error(
           "Die Daten wurden zwischenzeitlich geändert. Bitte neu laden.",
         );
+      for (const id of deletedEntities)
+        this.db.prepare("DELETE FROM audit WHERE entity=?").run(id);
       for (const e of entries)
         this.db
           .prepare("INSERT INTO audit VALUES(?,?,?,?,?)")
@@ -94,9 +95,12 @@ export class Store {
     const old = record.id ? s[kind].find((x) => x.id === record.id) : null;
     if (record.id && !old) throw Error("Der Eintrag existiert nicht mehr.");
     if (old?.archivedAt) value.archivedAt = old.archivedAt;
-    value.id =
-      old?.id ||
-      `${prefix}-${String(Math.max(0, ...s[kind].map((x) => Number(x.id.match(/-(\d+)$/)?.[1]) || 0)) + 1).padStart(3, "0")}`;
+    const number = Math.max(
+      kind === "cases" ? s.nextCaseNumber || 1 : 1,
+      ...s[kind].map((x) => (Number(x.id.match(/-(\d+)$/)?.[1]) || 0) + 1),
+    );
+    value.id = old?.id || `${prefix}-${String(number).padStart(3, "0")}`;
+    if (!old && kind === "cases") s.nextCaseNumber = number + 1;
     const changes = keys
       .filter((k) => k !== "id" && (old?.[k] ?? "") !== value[k])
       .map((k) => ({
@@ -204,7 +208,10 @@ export class Store {
     );
   }
   archive(kind, id, archived, revision) {
-    if (!["schools", "staff"].includes(kind) || typeof archived !== "boolean")
+    if (
+      !["cases", "schools", "staff"].includes(kind) ||
+      typeof archived !== "boolean"
+    )
       throw Error("Ungültige Archivaktion.");
     const state = this.read(),
       record = state[kind].find((x) => x.id === id);
@@ -240,20 +247,23 @@ export class Store {
         })),
     ]);
   }
-  demo(revision) {
-    const state = withDemoData(this.read());
-    validateState(state);
-    return this.commit(
-      state,
-      revision,
-      state.cases
-        .filter((c) => c.id.startsWith("DEMO-"))
-        .map((c) => ({
-          entity: c.id,
-          action: "Demofall erstellt",
-          changes: [{ field: "Fall", before: "", after: c.name }],
-        })),
+  removeCase(id, confirmation, revision) {
+    if (!id || confirmation !== id)
+      throw Error("Bitte die Fall-ID zur Bestätigung eingeben.");
+    const state = this.read();
+    if (!state.cases.some((c) => c.id === id))
+      throw Error("Fall nicht gefunden.");
+    state.nextCaseNumber = Math.max(
+      state.nextCaseNumber || 1,
+      ...state.cases.map((c) => (Number(c.id.match(/-(\d+)$/)?.[1]) || 0) + 1),
     );
+    state.cases = state.cases.filter((c) => c.id !== id);
+    return this.commit(state, revision, [], [id]);
+  }
+  reset(confirmation, revision) {
+    if (confirmation !== "RESET")
+      throw Error("Bitte RESET zur Bestätigung eingeben.");
+    return this.import(emptyState(), revision, []);
   }
   import(data, revision, history) {
     validateState(data);
@@ -309,6 +319,11 @@ export class Store {
 }
 export function validateState(s) {
   if (!s || s.version !== 1) throw Error("Unbekanntes Dateiformat.");
+  if (
+    s.nextCaseNumber !== undefined &&
+    (!Number.isSafeInteger(s.nextCaseNumber) || s.nextCaseNumber < 1)
+  )
+    throw Error("Ungültiger Fallnummernzähler.");
   for (const kind of ["cases", "staff", "schools", "municipalities"]) {
     if (!Array.isArray(s[kind]) || s[kind].length > 50000)
       throw Error("Ungültige Datenmenge.");

@@ -185,6 +185,7 @@ export async function readWorkbook(path) {
       const k = caseKeys[i];
       if (d[caseHeaders[i]] !== undefined) c[k] = d[caseHeaders[i]];
     }
+    if (d["Archiviert am"]) c.archivedAt = String(d["Archiviert am"]);
     c.id = String(c.id || "");
     if (!c.id) throw Error(`Fälle, Zeile ${row}: Fall-ID fehlt.`);
     for (const k of dateKeys) c[k] = dateValue(c[k]);
@@ -374,8 +375,9 @@ export async function writeWorkbook(state, path, now = today()) {
           ),
           c.staffId,
           c.schoolId,
+          c.archivedAt || "",
         ]
-      : Array(24).fill(null);
+      : Array(25).fill(null);
   });
   const overviewHeaders = [
     "Fall-ID",
@@ -422,7 +424,7 @@ export async function writeWorkbook(state, path, now = today()) {
   const c = setup(
     w,
     "Fälle",
-    [...caseHeaders, "Verknüpfte ID", "Schul-ID"],
+    [...caseHeaders, "Verknüpfte ID", "Schul-ID", "Archiviert am"],
     [
       15, 28, 16, 30, 26, 36, 48, 16, 20, 24, 26, 22, 45, 22, 24, 40, 22, 22,
       32, 23, 32, 45, 20,
@@ -451,7 +453,8 @@ export async function writeWorkbook(state, path, now = today()) {
         ? [
             ...staffFields.map((k) => s[k]),
             state.cases.filter(
-              (c) => c.staffId === s.id && c.status !== "Beendet",
+              (c) =>
+                c.staffId === s.id && c.status !== "Beendet" && !c.archivedAt,
             ).length,
             "",
             s.notes,
@@ -523,8 +526,8 @@ export async function writeWorkbook(state, path, now = today()) {
     a.getCell(i + 14, 1).value = status;
     formula(
       a.getCell(i + 14, 2),
-      `COUNTIF('Fälle'!C8:C${n + 7},A${i + 14})`,
-      state.cases.filter((c) => c.status === status).length,
+      `COUNTIFS('Fälle'!C8:C${n + 7},A${i + 14},'Fälle'!Y8:Y${n + 7},"")`,
+      state.cases.filter((c) => c.status === status && !c.archivedAt).length,
     );
   });
   a.getCell("A20").value = "Rot: überfällig / heute";
@@ -665,6 +668,15 @@ export async function writeWorkbook(state, path, now = today()) {
       ),
       v ? warnings(v, state).join("; ") : "",
     );
+    for (const col of [4, 5, 6, 7, 18, 19, 20, 21]) {
+      const cell = o.getCell(r, col);
+      const previous = cell.value;
+      const archivedValue = [6, 18, 19, 20].includes(col) ? "Archiviert" : "";
+      cell.value = {
+        ...previous,
+        formula: `IF(${src("Y")}<>"","${archivedValue}",${previous.formula})`,
+      };
+    }
     for (const col of [4, 12, 14, 15, 16, 17])
       o.getCell(r, col).numFmt = "dd.mm.yyyy";
   }
@@ -672,10 +684,11 @@ export async function writeWorkbook(state, path, now = today()) {
     const s = state.staff[r - 8];
     formula(
       b.getCell(r, 12),
-      `IF(A${r}="","",COUNTIFS('Fälle'!$W$8:$W$${n + 7},A${r},'Fälle'!$C$8:$C$${n + 7},"<>Beendet"))`,
+      `IF(A${r}="","",COUNTIFS('Fälle'!$W$8:$W$${n + 7},A${r},'Fälle'!$C$8:$C$${n + 7},"<>Beendet",'Fälle'!$Y$8:$Y$${n + 7},""))`,
       s
         ? state.cases.filter(
-            (c) => c.staffId === s.id && c.status !== "Beendet",
+            (c) =>
+              c.staffId === s.id && c.status !== "Beendet" && !c.archivedAt,
           ).length
         : "",
     );

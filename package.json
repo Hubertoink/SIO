@@ -1,7 +1,7 @@
 {
   "name": "sio-desktop",
   "productName": "SIO",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -41,7 +41,7 @@
     "appId": "de.sio.desktop",
     "productName": "SIO",
     "directories": {
-      "output": "release-sio-0.2.0"
+      "output": "release-sio-0.3.0"
     },
     "files": [
       "dist/**/*",

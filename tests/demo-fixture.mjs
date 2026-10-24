@@ -1,4 +1,4 @@
-import { newCase, newStaff, addDays, today } from "./model.mjs";
+import { newCase, newStaff, addDays, today } from "../shared/model.mjs";
 
 export function withDemoData(existing, now = today()) {
   if (existing.cases.some((c) => c.id.startsWith("DEMO-")))

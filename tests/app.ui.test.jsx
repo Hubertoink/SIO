@@ -10,7 +10,6 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../src/main.jsx";
-import { withDemoData } from "../shared/demo.mjs";
 import {
   emptyState,
   newCase,
@@ -19,6 +18,66 @@ import {
   addDays,
 } from "../shared/model.mjs";
 let data, history, closeCallback;
+
+test("Reset verlangt RESET und kann vorher abgebrochen werden", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "Dashboard" });
+  await user.click(
+    screen.getByRole("button", { name: "Einstellungen", exact: true }),
+  );
+  expect(screen.queryByText("Demodaten erstellen")).toBeNull();
+  await user.click(
+    await screen.findByRole("button", { name: "Alle Daten zurücksetzen" }),
+  );
+  let dialog = within(screen.getByRole("dialog"));
+  expect(
+    dialog.getByRole("button", { name: "Alles zurücksetzen" }).disabled,
+  ).toBe(true);
+  await user.click(dialog.getByRole("button", { name: "Abbrechen" }));
+  expect(window.sco.reset).not.toHaveBeenCalled();
+  await user.click(
+    await screen.findByRole("button", { name: "Alle Daten zurücksetzen" }),
+  );
+  dialog = within(screen.getByRole("dialog"));
+  await user.type(dialog.getByRole("textbox"), "RESET");
+  await user.click(dialog.getByRole("button", { name: "Alles zurücksetzen" }));
+  await waitFor(() =>
+    expect(window.sco.reset).toHaveBeenCalledWith("RESET", 0),
+  );
+  expect(data.cases).toHaveLength(0);
+  expect(data.schools).toHaveLength(0);
+});
+
+test("Fall archivieren, reaktivieren und mit Fall-ID löschen", async () => {
+  location.hash = "cases/F-001";
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "Testfall" });
+  await user.click(
+    screen.getByRole("button", { name: "Archivieren", exact: true }),
+  );
+  await user.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Archivieren",
+    }),
+  );
+  await waitFor(() => expect(data.cases[0].archivedAt).toBeTruthy());
+  await user.click(
+    await screen.findByRole("button", { name: "Wieder aktivieren" }),
+  );
+  await waitFor(() => expect(data.cases[0].archivedAt).toBeUndefined());
+  await user.click(screen.getByRole("button", { name: "Fall löschen" }));
+  const dialog = within(screen.getByRole("dialog"));
+  expect(
+    dialog.getByRole("button", { name: "Endgültig löschen" }).disabled,
+  ).toBe(true);
+  await user.type(dialog.getByRole("textbox"), "F-001");
+  await user.click(dialog.getByRole("button", { name: "Endgültig löschen" }));
+  await waitFor(() => expect(data.cases).toHaveLength(0));
+  expect(data.staff).toHaveLength(1);
+  expect(window.sco.deleteCase).toHaveBeenCalledWith("F-001", "F-001", 2);
+});
 const ok = (value) => Promise.resolve({ ok: true, value });
 beforeEach(() => {
   location.hash = "dashboard";
@@ -62,10 +121,20 @@ beforeEach(() => {
       data.revision++;
       return ok(structuredClone(data));
     }),
-    demo: vi.fn(() => {
-      data = withDemoData(data);
+    reset: vi.fn(() => {
+      data = { ...emptyState(), revision: data.revision + 1 };
+      return ok({
+        state: structuredClone(data),
+        backupPath: "test-backup.json",
+      });
+    }),
+    deleteCase: vi.fn((id) => {
+      data.cases = data.cases.filter((c) => c.id !== id);
       data.revision++;
-      return ok(structuredClone(data));
+      return ok({
+        state: structuredClone(data),
+        backupPath: "test-backup.json",
+      });
     }),
     master: vi.fn((kind, record) => {
       const value = {
@@ -172,24 +241,6 @@ test("Begleitungen lassen sich über die Oberfläche archivieren und wieder akti
     screen.getByRole("button", { name: "Begleitung wieder aktivieren" }),
   );
   await waitFor(() => expect(data.staff[0].archivedAt).toBeUndefined());
-});
-test("Entwicklungsbutton ergänzt Demofälle einmalig und erhält vorhandene Fälle", async () => {
-  const user = userEvent.setup();
-  render(<App />);
-  await screen.findByRole("heading", { name: "Dashboard" });
-  await user.click(
-    screen.getByRole("button", { name: "Einstellungen", exact: true }),
-  );
-  await user.click(
-    await screen.findByRole("button", { name: "Demodaten erstellen" }),
-  );
-  const done = await screen.findByRole("button", {
-    name: "Demodaten vorhanden",
-  });
-  expect(done.disabled).toBe(true);
-  expect(data.cases.length).toBe(7);
-  expect(data.cases[0].name).toBe("Testfall");
-  expect(window.sco.demo).toHaveBeenCalledTimes(1);
 });
 test("Schule behält Eingaben beim Anlegen einer Kommune; Enter speichert nur den aktiven Dialog", async () => {
   data.schools = [];

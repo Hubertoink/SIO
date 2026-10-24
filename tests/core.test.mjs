@@ -1,3 +1,4 @@
+import { withDemoData } from "./demo-fixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -22,6 +23,61 @@ import {
   selectable,
 } from "../shared/model.mjs";
 import { Store } from "../electron/store.mjs";
+
+test("Fallarchiv, Löschung und Reset schützen Daten und Revisionen", () => {
+  const store = new Store(":memory:");
+  try {
+    let s = store.save("cases", { ...newCase(), name: "Erster Fall" }, 0).state;
+    const id = s.cases[0].id;
+    s = store.archive("cases", id, true, s.revision);
+    assert.equal(overview(s.cases[0], s.settings).status, "Archiviert");
+    assert.equal(overview(s.cases[0], s.settings).next, "");
+    s = store.archive("cases", id, false, s.revision);
+    assert.equal(s.cases[0].status, "Neu");
+    assert.throws(() => store.removeCase(id, "falsch", s.revision));
+    assert.throws(() => store.removeCase(id, id, 0));
+    assert.equal(store.read().cases.length, 1);
+    assert.equal(store.history(id).length, 3);
+    s = store.removeCase(id, id, s.revision);
+    assert.equal(store.history(id).length, 0);
+    s = store.save(
+      "cases",
+      { ...newCase(), name: "Zweiter Fall" },
+      s.revision,
+    ).state;
+    assert.notEqual(s.cases[0].id, id);
+    assert.throws(() => store.reset("reset", s.revision));
+    assert.throws(() => store.reset("RESET", 0));
+    assert.equal(store.read().cases.length, 1);
+    s = store.reset("RESET", s.revision);
+    const { revision, ...data } = s;
+    assert.deepEqual(data, emptyState());
+    assert.deepEqual(store.allHistory(), []);
+  } finally {
+    store.close();
+  }
+});
+
+test("Excel erhält Fallarchiv ohne aktive Fristwarnungen", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "sio-archive-"));
+  const state = withDemoData(emptyState());
+  state.cases[0].archivedAt = new Date().toISOString();
+  try {
+    const file = path.join(dir, "archive.xlsx");
+    await writeWorkbook(state, file);
+    const parsed = await readWorkbook(file);
+    assert.equal(parsed.state.cases[0].archivedAt, state.cases[0].archivedAt);
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.readFile(file);
+    assert.equal(
+      book.getWorksheet("Fallliste").getCell("F8").result,
+      "Archiviert",
+    );
+    assert.match(book.getWorksheet("Fallliste").getCell("F8").formula, /Y8/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 import { readWorkbook, writeWorkbook } from "../electron/excel.mjs";
 const now = "2026-10-24";
 test("Fristabstand zeigt Richtung, Singular, heute und keine Zahl für fehlende/beendete Termine", () => {
@@ -42,7 +98,7 @@ test("Fristabstand zeigt Richtung, Singular, heute und keine Zahl für fehlende/
 test("Archivierung erhält Beziehungen, verhindert neue Zuordnungen und ist reversibel", () => {
   const store = new Store(":memory:");
   try {
-    let state = store.demo(0),
+    let state = store.import(withDemoData(emptyState()), 0),
       c = state.cases[0];
     const staffId = c.staffId,
       schoolId = c.schoolId;
@@ -106,7 +162,7 @@ test("Excel-Rundlauf erhält auch archivierte und unbenutzte Schulen samt stabil
   const store = new Store(":memory:");
   const dir = await mkdtemp(path.join(os.tmpdir(), "sio-archive-"));
   try {
-    let state = store.demo(0);
+    let state = store.import(withDemoData(emptyState()), 0);
     const c = state.cases[0];
     state = store.archive("schools", c.schoolId, true, state.revision);
     state = store.archive("staff", c.staffId, true, state.revision);
@@ -130,34 +186,6 @@ test("Excel-Rundlauf erhält auch archivierte und unbenutzte Schulen samt stabil
   } finally {
     store.close();
     await rm(dir, { recursive: true, force: true });
-  }
-});
-test("Demodaten ergänzen vorhandene Fälle atomar und bleiben bei erneutem Aufruf eindeutig", () => {
-  const store = new Store(":memory:");
-  try {
-    store.save("cases", { ...newCase(), name: "Eigener Fall" }, 0);
-    const before = store.read();
-    const s = store.demo(before.revision);
-    assert.equal(s.cases.length, 7);
-    assert.equal(s.cases[0].name, "Eigener Fall");
-    assert.equal(s.staff.length, 3);
-    assert.deepEqual(s.settings, before.settings);
-    assert.ok(
-      s.cases.some((c) => overview(c, s.settings).status === "Überfällig"),
-    );
-    assert.ok(
-      s.cases.some((c) => overview(c, s.settings).status === "Heute fällig"),
-    );
-    assert.ok(
-      s.cases.some(
-        (c) => overview(c, s.settings).status === "Termine ergänzen",
-      ),
-    );
-    assert.throws(() => store.demo(s.revision), /bereits vorhanden/);
-    assert.equal(store.read().cases.length, 7);
-    assert.equal(store.history("DEMO-F-001")[0].action, "Demofall erstellt");
-  } finally {
-    store.close();
   }
 });
 test("Fristen: überfällig, heute, Warnschwelle inklusive, geplant", () => {
